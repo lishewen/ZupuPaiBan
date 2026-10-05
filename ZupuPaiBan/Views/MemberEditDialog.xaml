@@ -1,0 +1,107 @@
+<Window x:Class="ZupuPaiBan.Views.MemberEditDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:conv="clr-namespace:ZupuPaiBan.Converters"
+        xmlns:models="clr-namespace:ZupuPaiBan.Models"
+        mc:Ignorable="d"
+        Title="编辑成员" Height="580" Width="480"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize">
+
+    <Window.Resources>
+        <conv:GenderToStringConverter x:Key="GenderToString"/>
+        <conv:PhotoPathToImageConverter x:Key="PhotoToImage"/>
+        <conv:GenderToChineseConverter x:Key="GenderToChinese"/>
+    </Window.Resources>
+
+    <Grid Margin="15">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="130"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- 左侧：表单 -->
+            <StackPanel Grid.Column="0" Margin="0,0,15,0">
+                <TextBlock Text="基本信息" FontWeight="Bold" FontSize="14"
+                           Foreground="#8B5E3C" Margin="0,0,0,10"/>
+
+                <TextBlock Text="姓名 *" Margin="0,2"/>
+                <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                         Padding="4,3" Margin="0,2" FontSize="13"/>
+
+                <TextBlock Text="性别" Margin="0,8,0,2"/>
+                <ComboBox SelectedValue="{Binding Gender}" Margin="0,2" Padding="4,3">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Converter={StaticResource GenderToChinese}}"/>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                    <x:Static Member="models:Gender.Male"/>
+                    <x:Static Member="models:Gender.Female"/>
+                </ComboBox>
+
+                <TextBlock Text="出生日期 (如: 1950年3月)" Margin="0,8,0,2"/>
+                <TextBox Text="{Binding BirthDate, UpdateSourceTrigger=PropertyChanged}"
+                         Padding="4,3" Margin="0,2" FontSize="13"/>
+
+                <TextBlock Text="逝世日期 (留空表示在世)" Margin="0,8,0,2"/>
+                <TextBox Text="{Binding DeathDate, UpdateSourceTrigger=PropertyChanged}"
+                         Padding="4,3" Margin="0,2" FontSize="13"/>
+
+                <TextBlock Text="配偶姓名" Margin="0,8,0,2"/>
+                <TextBox Text="{Binding SpouseName, UpdateSourceTrigger=PropertyChanged}"
+                         Padding="4,3" Margin="0,2" FontSize="13"/>
+
+                <TextBlock Text="辈分 (第几代)" Margin="0,8,0,2"/>
+                <TextBox Text="{Binding Generation, UpdateSourceTrigger=PropertyChanged}"
+                         Padding="4,3" Margin="0,2" FontSize="13"/>
+
+                <TextBlock Text="排行 (同辈中的顺序)" Margin="0,8,0,2"/>
+                <TextBox Text="{Binding BirthOrder, UpdateSourceTrigger=PropertyChanged}"
+                         Padding="4,3" Margin="0,2" FontSize="13"/>
+
+                <TextBlock Text="生平事迹" Margin="0,8,0,2"/>
+                <TextBox Text="{Binding Biography, UpdateSourceTrigger=PropertyChanged}"
+                         Padding="4,3" Margin="0,2" FontSize="13"
+                         TextWrapping="Wrap" AcceptsReturn="True"
+                         Height="60" VerticalScrollBarVisibility="Auto"/>
+            </StackPanel>
+
+            <!-- 右侧：照片 -->
+            <StackPanel Grid.Column="1">
+                <TextBlock Text="照片" FontWeight="Bold" FontSize="14"
+                           Foreground="#8B5E3C" Margin="0,0,0,10"/>
+
+                <Border Width="110" Height="130" BorderBrush="#CCC" BorderThickness="1"
+                        Background="#F8F8F8" CornerRadius="4" Margin="0,0,0,8">
+                    <Image Source="{Binding PhotoPath, Converter={StaticResource PhotoToImage}}"
+                           Stretch="Uniform" Margin="3"/>
+                </Border>
+
+                <Button Content="选择照片" Command="{Binding BrowsePhotoCommand}"
+                        Padding="8,4" HorizontalAlignment="Stretch" Margin="0,0,0,4"/>
+
+                <TextBlock Text="{Binding PhotoPath}" FontSize="10" Foreground="Gray"
+                           TextWrapping="Wrap" MaxWidth="120"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- 底部按钮 -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right"
+                    Margin="0,15,0,0">
+            <Button Content="确定" Width="80" Padding="8,5" Margin="0,0,10,0"
+                    Click="BtnOk_Click" Background="#4A7AB5" Foreground="White"
+                    FontWeight="Bold"/>
+            <Button Content="取消" Width="80" Padding="8,5"
+                    Click="BtnCancel_Click" IsCancel="True"/>
+        </StackPanel>
+    </Grid>
+</Window>
