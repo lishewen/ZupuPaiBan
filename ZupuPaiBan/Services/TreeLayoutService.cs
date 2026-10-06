@@ -12,10 +12,8 @@ public class LayoutNode
     public LayoutNode? SpouseNode { get; set; }
     public List<LayoutNode> Children { get; set; } = new();
     public double SubtreeWidth { get; set; }
+    public int Generation { get; set; }
 
-    /// <summary>
-    /// 获取节点对（含配偶）的中心X
-    /// </summary>
     public double PairCenterX
     {
         get
@@ -36,12 +34,24 @@ public class ConnectionLine
     public bool IsSpouseLine { get; set; }
 }
 
+public class PageLayout
+{
+    public int PageNumber { get; set; }
+    public List<LayoutNode> Nodes { get; set; } = new();
+    public List<ConnectionLine> Lines { get; set; } = new();
+    public double ContentHeight { get; set; }
+    public int StartGeneration { get; set; }
+    public int EndGeneration { get; set; }
+}
+
 public class LayoutResult
 {
     public List<LayoutNode> Nodes { get; set; } = new();
     public List<ConnectionLine> Lines { get; set; } = new();
+    public List<PageLayout> Pages { get; set; } = new();
     public double TotalWidth { get; set; }
     public double TotalHeight { get; set; }
+    public int TotalPages => Pages.Count > 0 ? Pages.Count : 1;
 }
 
 public class TreeLayoutService
@@ -79,6 +89,10 @@ public class TreeLayoutService
             node.Children = node.Children.OrderBy(c => c.Member.BirthOrder).ToList();
         roots = roots.OrderBy(r => r.Member.BirthOrder).ToList();
 
+        // 设置每个节点的代数
+        foreach (var root in roots)
+            SetGeneration(root, 1);
+
         foreach (var root in roots)
             CalculateSubtreeWidth(root);
 
@@ -101,9 +115,120 @@ public class TreeLayoutService
             CollectNodes(root, result);
 
         result.TotalWidth = Math.Max(totalWidth, _settings.PageWidth);
-        result.TotalHeight = (CalculateMaxDepth(roots) + 1) * (_settings.NodeHeight + _settings.VerticalSpacing) + titleHeight;
+        int maxDepth = CalculateMaxDepth(roots);
+        result.TotalHeight = (maxDepth + 1) * (_settings.NodeHeight + _settings.VerticalSpacing) + titleHeight;
+
+        // 分页处理
+        PaginateLayout(result, roots, titleHeight);
 
         return result;
+    }
+
+    private void SetGeneration(LayoutNode node, int generation)
+    {
+        node.Generation = generation;
+        foreach (var child in node.Children)
+        {
+            SetGeneration(child, generation + 1);
+        }
+    }
+
+    private void PaginateLayout(LayoutResult result, List<LayoutNode> roots, double titleHeight)
+    {
+        double pageContentHeight = _settings.PageHeight - titleHeight - 20; // 减去标题和边距
+        double rowHeight = _settings.NodeHeight + _settings.VerticalSpacing;
+        
+        // 计算每页能容纳多少代
+        int maxGenerationsPerPage = Math.Max(1, (int)(pageContentHeight / rowHeight));
+        
+        // 获取所有代数
+        int maxGeneration = result.Nodes.Count > 0 ? result.Nodes.Max(n => n.Generation) : 1;
+        
+        // 如果总代数小于等于每页可容纳的代数，则不需要分页
+        if (maxGeneration <= maxGenerationsPerPage)
+        {
+            result.Pages.Add(new PageLayout
+            {
+                PageNumber = 1,
+                Nodes = result.Nodes,
+                Lines = result.Lines,
+                ContentHeight = result.TotalHeight,
+                StartGeneration = 1,
+                EndGeneration = maxGeneration
+            });
+            return;
+        }
+
+        // 分页
+        int currentPage = 1;
+        int currentStartGen = 1;
+        
+        while (currentStartGen <= maxGeneration)
+        {
+            int currentEndGen = Math.Min(currentStartGen + maxGenerationsPerPage - 1, maxGeneration);
+            
+            var pageNodes = result.Nodes.Where(n => n.Generation >= currentStartGen && n.Generation <= currentEndGen).ToList();
+            
+            // 包含配偶节点
+            var spouseNodes = new List<LayoutNode>();
+            foreach (var node in pageNodes.ToList())
+            {
+                if (node.SpouseNode != null && !pageNodes.Contains(node.SpouseNode))
+                {
+                    spouseNodes.Add(node.SpouseNode);
+                }
+            }
+            pageNodes.AddRange(spouseNodes);
+            
+            // 过滤连线
+            var pageLines = result.Lines.Where(l =>
+            {
+                // 配偶连线：只要一方在当前页就显示
+                if (l.IsSpouseLine)
+                {
+                    return pageNodes.Any(n => 
+                        (Math.Abs(n.X - l.ParentX) < 1 && Math.Abs(n.Y + n.Height / 2 - l.ParentY) < 1) ||
+                        (Math.Abs(n.X - l.ChildX) < 1 && Math.Abs(n.Y + n.Height / 2 - l.ChildY) < 1));
+                }
+                // 父子连线：两端都在当前页才显示
+                var parentInPage = pageNodes.Any(n => Math.Abs(n.PairCenterX - l.ParentX) < 1 && Math.Abs(n.Y + n.Height - l.ParentY) < 1);
+                var childInPage = pageNodes.Any(n => Math.Abs(n.PairCenterX - l.ChildX) < 1 && Math.Abs(n.Y - l.ChildY) < 1);
+                return parentInPage && childInPage;
+            }).ToList();
+
+            // 调整Y坐标，让每页从顶部开始
+            double minY = pageNodes.Count > 0 ? pageNodes.Min(n => n.Y) : 0;
+            foreach (var node in pageNodes)
+            {
+                node.Y -= minY - titleHeight;
+                if (node.SpouseNode != null)
+                {
+                    node.SpouseNode.Y = node.Y;
+                }
+            }
+            
+            // 调整连线的Y坐标
+            foreach (var line in pageLines)
+            {
+                line.ParentY -= minY - titleHeight;
+                line.ChildY -= minY - titleHeight;
+            }
+
+            double pageHeight = pageNodes.Count > 0 ? pageNodes.Max(n => n.Y + n.Height) - titleHeight + 20 : 0;
+
+            result.Pages.Add(new PageLayout
+            {
+                PageNumber = currentPage,
+                Nodes = pageNodes,
+                Lines = pageLines,
+                ContentHeight = pageHeight,
+                StartGeneration = currentStartGen,
+                EndGeneration = currentEndGen
+            });
+
+            currentStartGen = currentEndGen + 1;
+            currentPage++;
+        }
     }
 
     private LayoutNode CreateLayoutNode(FamilyMember member)
@@ -160,15 +285,11 @@ public class TreeLayoutService
         node.SubtreeWidth = Math.Max(childrenWidth, GetPairWidth(node));
     }
 
-    /// <summary>
-    /// 核心布局算法：先居中父节点对，再居中子节点于父节点对下方
-    /// </summary>
     private void LayoutSubtree(LayoutNode node, double startX, double startY)
     {
         double pairWidth = GetPairWidth(node);
         node.Y = startY;
 
-        // 第一步：将父节点对（或单个节点）居中于子树宽度内
         double subtreeCenter = startX + node.SubtreeWidth / 2;
 
         if (node.SpouseNode != null)
@@ -182,7 +303,6 @@ public class TreeLayoutService
             node.X = subtreeCenter - node.Width / 2;
         }
 
-        // 第二步：如果有子节点，将子节点整体居中于父节点对中心下方
         if (node.Children.Count > 0)
         {
             double childrenTotalWidth = 0;

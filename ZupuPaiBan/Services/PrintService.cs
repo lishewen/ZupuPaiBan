@@ -2,6 +2,7 @@ using System.Printing;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
+using System.Windows.Markup;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using ZupuPaiBan.Models;
@@ -10,38 +11,44 @@ namespace ZupuPaiBan.Services;
 
 public class PrintService
 {
-    /// <summary>
-    /// 打印预览内容
-    /// </summary>
-    public bool Print(FixedPage page, string description)
+    public bool Print(List<FixedPage> pages, string description)
     {
         var dialog = new PrintDialog();
         if (dialog.ShowDialog() == true)
         {
             var writer = PrintQueue.CreateXpsDocumentWriter(dialog.PrintQueue);
-            writer.Write(page);
+            var doc = new FixedDocument();
+            foreach (var page in pages)
+            {
+                var pageContent = new PageContent();
+                ((IAddChild)pageContent).AddChild(page);
+                doc.Pages.Add(pageContent);
+            }
+            writer.Write(doc);
             return true;
         }
         return false;
     }
 
-    /// <summary>
-    /// 导出为 XPS 文件 (通过打印到 XPS Document Writer)
-    /// </summary>
-    public bool ExportToXps(FixedPage page, string filePath)
+    public bool ExportToXps(List<FixedPage> pages, string filePath)
     {
         try
         {
-            // 使用本地 XPS 打印队列导出
             var localPrintServer = new LocalPrintServer();
             var queue = localPrintServer.GetPrintQueue("Microsoft XPS Document Writer");
             if (queue == null)
             {
-                // 如果没有 XPS Writer，尝试默认打印队列
                 queue = LocalPrintServer.GetDefaultPrintQueue();
             }
             var writer = PrintQueue.CreateXpsDocumentWriter(queue);
-            writer.Write(page);
+            var doc = new FixedDocument();
+            foreach (var page in pages)
+            {
+                var pageContent = new PageContent();
+                ((IAddChild)pageContent).AddChild(page);
+                doc.Pages.Add(pageContent);
+            }
+            writer.Write(doc);
             return true;
         }
         catch
@@ -50,10 +57,39 @@ public class PrintService
         }
     }
 
-    /// <summary>
-    /// 创建用于打印/导出的 FixedPage
-    /// </summary>
-    public FixedPage CreatePrintPage(LayoutResult layoutResult, LayoutSettings settings)
+    public List<FixedPage> CreatePrintPages(LayoutResult layoutResult, LayoutSettings settings)
+    {
+        var pages = new List<FixedPage>();
+
+        if (layoutResult.Pages.Count == 0)
+        {
+            // 没有分页数据，创建单页
+            pages.Add(CreateSinglePage(layoutResult.Nodes, layoutResult.Lines, settings, 1, 1, 1));
+            return pages;
+        }
+
+        foreach (var pageLayout in layoutResult.Pages)
+        {
+            var page = CreateSinglePage(
+                pageLayout.Nodes,
+                pageLayout.Lines,
+                settings,
+                pageLayout.PageNumber,
+                layoutResult.TotalPages,
+                pageLayout.StartGeneration);
+            pages.Add(page);
+        }
+
+        return pages;
+    }
+
+    private FixedPage CreateSinglePage(
+        List<LayoutNode> nodes,
+        List<ConnectionLine> lines,
+        LayoutSettings settings,
+        int pageNumber,
+        int totalPages,
+        int startGeneration)
     {
         var page = new FixedPage
         {
@@ -82,24 +118,26 @@ public class PrintService
         Canvas.SetTop(titleBlock, 15);
         canvas.Children.Add(titleBlock);
 
-        // 计算缩放比例以适配页面
+        // 计算缩放比例
         double availableWidth = settings.PageWidth - 40;
-        double availableHeight = settings.PageHeight - 80;
-        double scaleX = availableWidth / Math.Max(layoutResult.TotalWidth, 1);
-        double scaleY = availableHeight / Math.Max(layoutResult.TotalHeight - 60, 1);
+        double availableHeight = settings.PageHeight - 100; // 留出页脚空间
+        double contentWidth = nodes.Count > 0 ? nodes.Max(n => n.X + n.Width + (n.SpouseNode?.Width ?? 0) + 20) : settings.PageWidth;
+        double contentHeight = nodes.Count > 0 ? nodes.Max(n => n.Y + n.Height) : settings.PageHeight;
+        
+        double scaleX = availableWidth / Math.Max(contentWidth, 1);
+        double scaleY = availableHeight / Math.Max(contentHeight - 60, 1);
         double scale = Math.Min(Math.Min(scaleX, scaleY), 1.0);
 
-        // 创建内容容器并应用缩放
         var contentCanvas = new Canvas();
         var transformGroup = new TransformGroup();
         transformGroup.Children.Add(new ScaleTransform(scale, scale));
-        double offsetX = (settings.PageWidth - layoutResult.TotalWidth * scale) / 2;
-        double offsetY = 60 + (availableHeight - layoutResult.TotalHeight * scale) / 2;
+        double offsetX = (settings.PageWidth - contentWidth * scale) / 2;
+        double offsetY = 60;
         transformGroup.Children.Add(new TranslateTransform(offsetX / scale, offsetY / scale));
         contentCanvas.RenderTransform = transformGroup;
 
         // 绘制连线
-        foreach (var line in layoutResult.Lines)
+        foreach (var line in lines)
         {
             if (line.IsSpouseLine)
             {
@@ -141,7 +179,7 @@ public class PrintService
                 pathFigure.Segments = segments;
 
                 var pathGeometry = new PathGeometry(new[] { pathFigure });
-                var pathShape = new System.Windows.Shapes.Path
+                var pathShape = new Path
                 {
                     Data = pathGeometry,
                     Stroke = new SolidColorBrush(Color.FromRgb(100, 70, 40)),
@@ -152,7 +190,7 @@ public class PrintService
         }
 
         // 绘制节点卡片
-        foreach (var node in layoutResult.Nodes)
+        foreach (var node in nodes)
         {
             var card = CreateNodeCard(node, settings);
             Canvas.SetLeft(card, node.X);
@@ -161,8 +199,21 @@ public class PrintService
         }
 
         canvas.Children.Add(contentCanvas);
-        page.Children.Add(canvas);
 
+        // 绘制页脚
+        var footerBlock = new TextBlock
+        {
+            Text = $"第 {startGeneration} 代 - 第 {pageNumber}/{totalPages} 页",
+            FontSize = 10,
+            Foreground = new SolidColorBrush(Colors.Gray),
+            HorizontalAlignment = HorizontalAlignment.Center
+        };
+        footerBlock.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        Canvas.SetLeft(footerBlock, (settings.PageWidth - footerBlock.DesiredSize.Width) / 2);
+        Canvas.SetTop(footerBlock, settings.PageHeight - 25);
+        canvas.Children.Add(footerBlock);
+
+        page.Children.Add(canvas);
         return page;
     }
 

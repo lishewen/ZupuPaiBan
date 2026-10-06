@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Documents;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -12,18 +13,20 @@ public partial class PreviewViewModel : ObservableObject
 {
     private readonly DataService _dataService;
     private readonly PrintService _printService;
+    private List<FixedPage> _pages = new();
 
     [ObservableProperty] private LayoutSettings _settings = new();
     [ObservableProperty] private FrameworkElement? _previewContent;
     [ObservableProperty] private double _zoomLevel = 1.0;
     [ObservableProperty] private string _statusText = "预览就绪";
+    [ObservableProperty] private int _currentPage = 1;
+    [ObservableProperty] private int _totalPages = 1;
 
     public PreviewViewModel(DataService dataService, PrintService printService)
     {
         _dataService = dataService;
         _printService = printService;
 
-        // 监听设置变化，自动刷新
         Settings.PropertyChanged += (s, e) => RefreshPreview();
     }
 
@@ -47,10 +50,13 @@ public partial class PreviewViewModel : ObservableObject
 
             var layoutService = new TreeLayoutService(Settings);
             var layoutResult = layoutService.CalculateLayout(allMembers);
-            var page = _printService.CreatePrintPage(layoutResult, Settings);
+            _pages = _printService.CreatePrintPages(layoutResult, Settings);
 
-            PreviewContent = page;
-            StatusText = $"预览: {allMembers.Count} 位成员, {Settings.PageSize} {GetOrientationText()}";
+            TotalPages = _pages.Count;
+            CurrentPage = 1;
+            ShowPage(1);
+
+            StatusText = $"预览: {allMembers.Count} 位成员, {TotalPages} 页, {Settings.PageSize} {GetOrientationText()}";
         }
         catch (Exception ex)
         {
@@ -58,9 +64,43 @@ public partial class PreviewViewModel : ObservableObject
         }
     }
 
+    private void ShowPage(int pageNumber)
+    {
+        if (pageNumber >= 1 && pageNumber <= _pages.Count)
+        {
+            PreviewContent = _pages[pageNumber - 1];
+            CurrentPage = pageNumber;
+        }
+    }
+
+    [RelayCommand]
+    private void FirstPage()
+    {
+        ShowPage(1);
+    }
+
+    [RelayCommand]
+    private void PreviousPage()
+    {
+        if (CurrentPage > 1)
+            ShowPage(CurrentPage - 1);
+    }
+
+    [RelayCommand]
+    private void NextPage()
+    {
+        if (CurrentPage < TotalPages)
+            ShowPage(CurrentPage + 1);
+    }
+
+    [RelayCommand]
+    private void LastPage()
+    {
+        ShowPage(TotalPages);
+    }
+
     private void RefreshPreview()
     {
-        // 异步刷新（不等待）
         _ = RefreshPreviewAsync();
     }
 
@@ -90,9 +130,9 @@ public partial class PreviewViewModel : ObservableObject
     [RelayCommand]
     private void Print()
     {
-        if (PreviewContent is FixedPage page)
+        if (_pages.Count > 0)
         {
-            var result = _printService.Print(page, Settings.Title);
+            var result = _printService.Print(_pages, Settings.Title);
             StatusText = result ? "打印完成" : "打印已取消";
         }
     }
@@ -100,7 +140,7 @@ public partial class PreviewViewModel : ObservableObject
     [RelayCommand]
     private void ExportXps()
     {
-        if (PreviewContent is not FixedPage page) return;
+        if (_pages.Count == 0) return;
 
         var dialog = new Microsoft.Win32.SaveFileDialog
         {
@@ -111,7 +151,7 @@ public partial class PreviewViewModel : ObservableObject
 
         if (dialog.ShowDialog() == true)
         {
-            var result = _printService.ExportToXps(page, dialog.FileName);
+            var result = _printService.ExportToXps(_pages, dialog.FileName);
             StatusText = result ? $"已导出到: {dialog.FileName}" : "导出失败";
         }
     }

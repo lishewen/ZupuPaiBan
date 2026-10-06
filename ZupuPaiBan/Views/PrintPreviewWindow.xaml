@@ -45,6 +45,18 @@
                     <TextBlock Text=" 刷新" VerticalAlignment="Center"/>
                 </StackPanel>
             </Button>
+            <Separator/>
+            <Button Command="{Binding FirstPageCommand}" Padding="4,4" Margin="2" Content="⏮" ToolTip="首页"/>
+            <Button Command="{Binding PreviousPageCommand}" Padding="4,4" Margin="2" Content="◀" ToolTip="上一页"/>
+            <TextBlock VerticalAlignment="Center" Margin="5,0">
+                <Run Text="第"/>
+                <Run Text="{Binding CurrentPage, Mode=OneWay}"/>
+                <Run Text="/"/>
+                <Run Text="{Binding TotalPages, Mode=OneWay}"/>
+                <Run Text="页"/>
+            </TextBlock>
+            <Button Command="{Binding NextPageCommand}" Padding="4,4" Margin="2" Content="▶" ToolTip="下一页"/>
+            <Button Command="{Binding LastPageCommand}" Padding="4,4" Margin="2" Content="⏭" ToolTip="末页"/>
         </ToolBar>
 
         <!-- 主内容区 -->
