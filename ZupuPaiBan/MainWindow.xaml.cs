@@ -90,4 +90,9 @@ public partial class MainWindow : Window
         };
         aboutDialog.ShowDialog();
     }
+
+    private void MenuExit_Click(object sender, RoutedEventArgs e)
+    {
+        Application.Current.Shutdown();
+    }
 }

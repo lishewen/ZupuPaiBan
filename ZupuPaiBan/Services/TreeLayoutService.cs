@@ -93,6 +93,13 @@ public class TreeLayoutService
         foreach (var root in roots)
             SetGeneration(root, 1);
 
+        // 根据布局模式选择不同的布局算法
+        if (_settings.LayoutMode == LayoutMode.Vertical)
+        {
+            return CalculateVerticalLayout(roots);
+        }
+
+        // 水平布局（默认）
         foreach (var root in roots)
             CalculateSubtreeWidth(root);
 
@@ -122,6 +129,184 @@ public class TreeLayoutService
         PaginateLayout(result, roots, titleHeight);
 
         return result;
+    }
+
+    /// <summary>
+    /// 竖版世系图布局：从左到右展开
+    /// </summary>
+    private LayoutResult CalculateVerticalLayout(List<LayoutNode> roots)
+    {
+        var result = new LayoutResult();
+        double titleHeight = 60;
+
+        // 计算每个节点的子树高度（竖版中是垂直方向）
+        foreach (var root in roots)
+            CalculateSubtreeHeight(root);
+
+        // 计算总高度
+        double totalHeight = 0;
+        foreach (var root in roots)
+        {
+            totalHeight += root.SubtreeWidth + _settings.VerticalSpacing;
+        }
+        if (roots.Count > 0) totalHeight -= _settings.VerticalSpacing;
+
+        // 布局每个根节点
+        double currentY = titleHeight;
+        double columnWidth = _settings.NodeWidth + _settings.HorizontalSpacing;
+        int maxGeneration = roots.Count > 0 ? roots.Max(r => GetMaxGeneration(r)) : 1;
+
+        foreach (var root in roots)
+        {
+            LayoutVerticalSubtree(root, 0, currentY);
+            currentY += root.SubtreeWidth + _settings.VerticalSpacing;
+        }
+
+        foreach (var root in roots)
+            CollectNodes(root, result);
+
+        result.TotalWidth = maxGeneration * columnWidth + _settings.HorizontalSpacing;
+        result.TotalHeight = Math.Max(totalHeight + titleHeight, _settings.PageHeight);
+
+        // 分页处理（竖版按列分页）
+        PaginateVerticalLayout(result, roots, titleHeight);
+
+        return result;
+    }
+
+    private void CalculateSubtreeHeight(LayoutNode node)
+    {
+        if (node.Children.Count == 0)
+        {
+            node.SubtreeWidth = GetPairWidth(node);
+            return;
+        }
+
+        double childrenHeight = 0;
+        foreach (var child in node.Children)
+        {
+            CalculateSubtreeHeight(child);
+            childrenHeight += child.SubtreeWidth;
+        }
+        childrenHeight += (node.Children.Count - 1) * _settings.VerticalSpacing;
+
+        node.SubtreeWidth = Math.Max(childrenHeight, GetPairWidth(node));
+    }
+
+    private void LayoutVerticalSubtree(LayoutNode node, double startX, double startY)
+    {
+        double pairWidth = GetPairWidth(node);
+        node.X = startX;
+        node.Y = startY + node.SubtreeWidth / 2 - pairWidth / 2;
+
+        if (node.SpouseNode != null)
+        {
+            node.SpouseNode.X = node.X;
+            node.SpouseNode.Y = node.Y + node.Height + SpouseGap;
+        }
+
+        if (node.Children.Count > 0)
+        {
+            double childrenTotalHeight = 0;
+            foreach (var child in node.Children)
+                childrenTotalHeight += child.SubtreeWidth;
+            childrenTotalHeight += (node.Children.Count - 1) * _settings.VerticalSpacing;
+
+            double childStartY = startY + (node.SubtreeWidth - childrenTotalHeight) / 2;
+            double childX = startX + _settings.NodeWidth + _settings.HorizontalSpacing;
+
+            foreach (var child in node.Children)
+            {
+                LayoutVerticalSubtree(child, childX, childStartY);
+                childStartY += child.SubtreeWidth + _settings.VerticalSpacing;
+            }
+        }
+    }
+
+    private int GetMaxGeneration(LayoutNode node)
+    {
+        if (node.Children.Count == 0) return node.Generation;
+        return node.Children.Max(GetMaxGeneration);
+    }
+
+    private void PaginateVerticalLayout(LayoutResult result, List<LayoutNode> roots, double titleHeight)
+    {
+        // 竖版布局按列分页
+        double pageContentWidth = _settings.PageWidth - 40;
+        double columnWidth = _settings.NodeWidth + _settings.HorizontalSpacing;
+        int maxColumnsPerPage = Math.Max(1, (int)(pageContentWidth / columnWidth));
+
+        int maxGeneration = result.Nodes.Count > 0 ? result.Nodes.Max(n => n.Generation) : 1;
+
+        if (maxGeneration <= maxColumnsPerPage)
+        {
+            result.Pages.Add(new PageLayout
+            {
+                PageNumber = 1,
+                Nodes = result.Nodes,
+                Lines = result.Lines,
+                ContentHeight = result.TotalHeight,
+                StartGeneration = 1,
+                EndGeneration = maxGeneration
+            });
+            return;
+        }
+
+        // 按代分页
+        int currentPage = 1;
+        int currentStartGen = 1;
+
+        while (currentStartGen <= maxGeneration)
+        {
+            int currentEndGen = Math.Min(currentStartGen + maxColumnsPerPage - 1, maxGeneration);
+
+            var pageNodes = result.Nodes.Where(n => n.Generation >= currentStartGen && n.Generation <= currentEndGen).ToList();
+            var spouseNodes = new List<LayoutNode>();
+            foreach (var node in pageNodes.ToList())
+            {
+                if (node.SpouseNode != null && !pageNodes.Contains(node.SpouseNode))
+                    spouseNodes.Add(node.SpouseNode);
+            }
+            pageNodes.AddRange(spouseNodes);
+
+            var pageLines = result.Lines.Where(l =>
+            {
+                if (l.IsSpouseLine)
+                    return pageNodes.Any(n =>
+                        (Math.Abs(n.X - l.ParentX) < 1 && Math.Abs(n.Y - l.ParentY) < 1) ||
+                        (Math.Abs(n.X - l.ChildX) < 1 && Math.Abs(n.Y - l.ChildY) < 1));
+                var parentInPage = pageNodes.Any(n => Math.Abs(n.X + n.Width - l.ParentX) < 1);
+                var childInPage = pageNodes.Any(n => Math.Abs(n.X - l.ChildX) < 1);
+                return parentInPage && childInPage;
+            }).ToList();
+
+            // 调整X坐标
+            double minX = pageNodes.Count > 0 ? pageNodes.Min(n => n.X) : 0;
+            foreach (var node in pageNodes)
+            {
+                node.X -= minX - 20;
+                if (node.SpouseNode != null)
+                    node.SpouseNode.X = node.X;
+            }
+            foreach (var line in pageLines)
+            {
+                line.ParentX -= minX - 20;
+                line.ChildX -= minX - 20;
+            }
+
+            result.Pages.Add(new PageLayout
+            {
+                PageNumber = currentPage,
+                Nodes = pageNodes,
+                Lines = pageLines,
+                ContentHeight = result.TotalHeight,
+                StartGeneration = currentStartGen,
+                EndGeneration = currentEndGen
+            });
+
+            currentStartGen = currentEndGen + 1;
+            currentPage++;
+        }
     }
 
     private void SetGeneration(LayoutNode node, int generation)

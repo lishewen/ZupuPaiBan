@@ -15,10 +15,17 @@ public enum PageOrientation
     Landscape
 }
 
+public enum LayoutMode
+{
+    Horizontal,  // 水平树形（默认）
+    Vertical     // 竖版世系图
+}
+
 public partial class LayoutSettings : ObservableObject
 {
     [ObservableProperty] private PageSizeOption _pageSize = PageSizeOption.A3;
     [ObservableProperty] private PageOrientation _orientation = PageOrientation.Landscape;
+    [ObservableProperty] private LayoutMode _layoutMode = LayoutMode.Horizontal;
     [ObservableProperty] private double _nodeWidth = 140;
     [ObservableProperty] private double _nodeHeight = 100;
     [ObservableProperty] private double _horizontalSpacing = 30;

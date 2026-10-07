@@ -3,8 +3,10 @@ using System.Windows;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Win32;
 using ZupuPaiBan.Data;
 using ZupuPaiBan.Models;
+using ZupuPaiBan.Services;
 
 namespace ZupuPaiBan.ViewModels;
 
@@ -155,4 +157,151 @@ public partial class MainViewModel : ObservableObject
     }
 
     public event EventHandler? OnOpenPreviewRequested;
+
+    [RelayCommand]
+    private async Task ImportFromExcelAsync()
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "导入 Excel 数据",
+            Filter = "Excel 文件|*.xlsx;*.xls"
+        };
+
+        if (dialog.ShowDialog() != true) return;
+
+        try
+        {
+            var excelService = new ExcelService();
+            var members = await excelService.ImportFromExcelAsync(dialog.FileName);
+            
+            // 清空现有数据并导入
+            var context = new ZupuDbContext();
+            var dataService = new DataService(context);
+            
+            // 删除所有现有成员
+            var existing = await dataService.GetAllMembersAsync();
+            foreach (var m in existing)
+            {
+                await dataService.DeleteMemberAsync(m.Id);
+            }
+            
+            // 添加新成员
+            foreach (var member in members)
+            {
+                await dataService.AddMemberAsync(member);
+            }
+            
+            await LoadDataAsync();
+            StatusText = $"已导入 {members.Count} 位成员";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"导入失败: {ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+            StatusText = "导入失败";
+        }
+    }
+
+    [RelayCommand]
+    private async Task ExportToExcelAsync()
+    {
+        var allMembers = await _dataService.GetAllMembersAsync();
+        if (allMembers.Count == 0)
+        {
+            MessageBox.Show("没有成员数据可导出", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var dialog = new SaveFileDialog
+        {
+            Title = "导出 Excel 数据",
+            Filter = "Excel 文件|*.xlsx",
+            FileName = "族谱数据.xlsx"
+        };
+
+        if (dialog.ShowDialog() != true) return;
+
+        try
+        {
+            var excelService = new ExcelService();
+            await excelService.ExportToExcelAsync(allMembers, dialog.FileName);
+            StatusText = $"已导出到: {dialog.FileName}";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"导出失败: {ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+            StatusText = "导出失败";
+        }
+    }
+
+    [RelayCommand]
+    private async Task ImportFromGedcomAsync()
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "导入 GEDCOM 数据",
+            Filter = "GEDCOM 文件|*.ged;*.gedcom"
+        };
+
+        if (dialog.ShowDialog() != true) return;
+
+        try
+        {
+            var gedcomService = new GedcomService();
+            var members = await gedcomService.ImportFromGedcomAsync(dialog.FileName);
+            
+            var context = new ZupuDbContext();
+            var dataService = new DataService(context);
+            
+            var existing = await dataService.GetAllMembersAsync();
+            foreach (var m in existing)
+            {
+                await dataService.DeleteMemberAsync(m.Id);
+            }
+            
+            foreach (var member in members)
+            {
+                await dataService.AddMemberAsync(member);
+            }
+            
+            await LoadDataAsync();
+            StatusText = $"已导入 {members.Count} 位成员";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"导入失败: {ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+            StatusText = "导入失败";
+        }
+    }
+
+    [RelayCommand]
+    private async Task ExportToGedcomAsync()
+    {
+        var allMembers = await _dataService.GetAllMembersAsync();
+        if (allMembers.Count == 0)
+        {
+            MessageBox.Show("没有成员数据可导出", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var dialog = new SaveFileDialog
+        {
+            Title = "导出 GEDCOM 数据",
+            Filter = "GEDCOM 文件|*.ged",
+            FileName = "族谱数据.ged"
+        };
+
+        if (dialog.ShowDialog() != true) return;
+
+        try
+        {
+            var gedcomService = new GedcomService();
+            await gedcomService.ExportToGedcomAsync(allMembers, dialog.FileName);
+            StatusText = $"已导出到: {dialog.FileName}";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"导出失败: {ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+            StatusText = "导出失败";
+        }
+    }
 }

@@ -155,4 +155,37 @@ public partial class PreviewViewModel : ObservableObject
             StatusText = result ? $"已导出到: {dialog.FileName}" : "导出失败";
         }
     }
+
+    [RelayCommand]
+    private async Task ExportPdfAsync()
+    {
+        try
+        {
+            var allMembers = await _dataService.GetAllMembersAsync();
+            if (allMembers.Count == 0)
+            {
+                StatusText = "没有成员数据";
+                return;
+            }
+
+            var dialog = new Microsoft.Win32.SaveFileDialog
+            {
+                Title = "导出为 PDF",
+                Filter = "PDF 文件|*.pdf",
+                FileName = $"{Settings.Title}.pdf"
+            };
+
+            if (dialog.ShowDialog() != true) return;
+
+            var layoutService = new TreeLayoutService(Settings);
+            var layoutResult = layoutService.CalculateLayout(allMembers);
+            var pdfService = new PdfExportService();
+            var result = pdfService.ExportToPdf(layoutResult, Settings, dialog.FileName);
+            StatusText = result ? $"已导出 PDF: {dialog.FileName}" : "导出 PDF 失败";
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"导出 PDF 失败: {ex.Message}";
+        }
+    }
 }

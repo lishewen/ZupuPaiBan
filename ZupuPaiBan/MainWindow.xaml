@@ -21,12 +21,29 @@
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
+        <!-- 菜单栏 -->
+        <Menu Grid.Row="0" Background="#F5F0E8">
+            <MenuItem Header="文件(_F)">
+                <MenuItem Header="导入 Excel 数据" Command="{Binding ImportFromExcelCommand}"/>
+                <MenuItem Header="导入 GEDCOM 数据" Command="{Binding ImportFromGedcomCommand}"/>
+                <Separator/>
+                <MenuItem Header="导出 Excel 数据" Command="{Binding ExportToExcelCommand}"/>
+                <MenuItem Header="导出 GEDCOM 数据" Command="{Binding ExportToGedcomCommand}"/>
+                <Separator/>
+                <MenuItem Header="退出" Click="MenuExit_Click"/>
+            </MenuItem>
+            <MenuItem Header="帮助(_H)">
+                <MenuItem Header="关于" Click="BtnAbout_Click"/>
+            </MenuItem>
+        </Menu>
+
         <!-- 工具栏 -->
-        <ToolBar Grid.Row="0" Background="#F5F0E8">
+        <ToolBar Grid.Row="1" Background="#F5F0E8">
             <Button Command="{Binding AddRootMemberCommand}" Padding="8,4" Margin="2">
                 <StackPanel Orientation="Horizontal">
                     <TextBlock Text="➕" FontSize="14" VerticalAlignment="Center"/>
@@ -72,7 +89,7 @@
         </ToolBar>
 
         <!-- 主内容区 -->
-        <Grid Grid.Row="1">
+        <Grid Grid.Row="2">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="320"/>
                 <ColumnDefinition Width="5"/>
@@ -229,7 +246,7 @@
         </Grid>
 
         <!-- 状态栏 -->
-        <StatusBar Grid.Row="2" Background="#F5F0E8">
+        <StatusBar Grid.Row="3" Background="#F5F0E8">
             <StatusBarItem>
                 <TextBlock Text="{Binding StatusText}"/>
             </StatusBarItem>

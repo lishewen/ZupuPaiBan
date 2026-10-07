@@ -32,6 +32,12 @@
                     <TextBlock Text=" 导出XPS" VerticalAlignment="Center"/>
                 </StackPanel>
             </Button>
+            <Button Command="{Binding ExportPdfCommand}" Padding="8,4" Margin="2">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="📄" FontSize="14" VerticalAlignment="Center"/>
+                    <TextBlock Text=" 导出PDF" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Button>
             <Separator/>
             <Button Command="{Binding ZoomOutCommand}" Padding="6,4" Margin="2" Content="➖"/>
             <TextBlock Text="{Binding ZoomLevel, StringFormat='{}{0:P0}'}" VerticalAlignment="Center"
@@ -114,6 +120,12 @@
                     <ComboBox SelectedValue="{Binding Settings.Orientation}" Margin="0,0,0,10" Padding="4,3">
                         <x:Static Member="models:PageOrientation.Landscape"/>
                         <x:Static Member="models:PageOrientation.Portrait"/>
+                    </ComboBox>
+
+                    <TextBlock Text="布局模式" FontWeight="SemiBold" Margin="0,0,0,3"/>
+                    <ComboBox SelectedValue="{Binding Settings.LayoutMode}" Margin="0,0,0,10" Padding="4,3">
+                        <x:Static Member="models:LayoutMode.Horizontal"/>
+                        <x:Static Member="models:LayoutMode.Vertical"/>
                     </ComboBox>
 
                     <Separator Margin="0,5"/>
