@@ -37,6 +37,10 @@
                 <Separator/>
                 <MenuItem Header="退出" Click="MenuExit_Click"/>
             </MenuItem>
+            <MenuItem Header="协作(_C)">
+                <MenuItem Header="协作导出..." Command="{Binding ExportCollaborationCommand}"/>
+                <MenuItem Header="协作导入..." Command="{Binding ImportCollaborationCommand}"/>
+            </MenuItem>
             <MenuItem Header="帮助(_H)">
                 <MenuItem Header="关于" Click="BtnAbout_Click"/>
             </MenuItem>

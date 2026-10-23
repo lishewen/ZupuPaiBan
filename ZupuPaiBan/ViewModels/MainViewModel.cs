@@ -35,6 +35,11 @@ public partial class MainViewModel : ObservableObject
         _dataService = dataService;
     }
 
+    public async Task<List<FamilyMember>> GetAllMembersAsync()
+    {
+        return await _dataService.GetAllMembersAsync();
+    }
+
     public async Task LoadDataAsync()
     {
         try
@@ -304,4 +309,19 @@ public partial class MainViewModel : ObservableObject
             StatusText = "导出失败";
         }
     }
+
+    [RelayCommand]
+    private void ExportCollaboration()
+    {
+        OnExportCollaborationRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    [RelayCommand]
+    private void ImportCollaboration()
+    {
+        OnImportCollaborationRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    public event EventHandler? OnExportCollaborationRequested;
+    public event EventHandler? OnImportCollaborationRequested;
 }

@@ -1,0 +1,43 @@
+<Window x:Class="ZupuPaiBan.Views.CollaborationImportDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="协作导入" Height="500" Width="500"
+        WindowStartupLocation="CenterOwner">
+    <Grid Margin="15">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- 文件选择 -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
+            <Button Content="选择文件..." Click="BtnSelectFile_Click" Padding="12,5" Margin="0,0,10,0"/>
+            <TextBlock x:Name="txtFileName" Text="未选择文件" VerticalAlignment="Center" Foreground="Gray"/>
+        </StackPanel>
+
+        <!-- 目标成员选择 -->
+        <TextBlock Grid.Row="1" Text="导入到哪位成员旗下：" FontWeight="Bold" Margin="0,0,0,5"/>
+        <TreeView Grid.Row="2" x:Name="treeTarget" Height="150" BorderBrush="#CCC" BorderThickness="1"
+                  SelectedItemChanged="TreeTarget_SelectedItemChanged" Margin="0,0,0,10"/>
+
+        <!-- 预览 -->
+        <TextBlock Grid.Row="3" Text="文件成员预览：" FontWeight="Bold" Margin="0,0,0,5"/>
+        <Border Grid.Row="4" BorderBrush="#DDD" BorderThickness="1" Margin="0,0,0,10">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <ItemsControl x:Name="listPreview" Margin="8"/>
+            </ScrollViewer>
+        </Border>
+
+        <!-- 按钮 -->
+        <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button x:Name="btnImport" Content="确认导入" Click="BtnImport_Click"
+                    Padding="20,6" Margin="5,0" IsEnabled="False"
+                    Background="#4A7AB5" Foreground="White" FontWeight="Bold"/>
+            <Button Content="取消" Click="BtnCancel_Click" Padding="15,6" Margin="5,0"/>
+        </StackPanel>
+    </Grid>
+</Window>

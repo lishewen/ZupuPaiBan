@@ -23,6 +23,8 @@ public partial class MainWindow : Window
 
         _viewModel.OnEditMemberRequested += OnEditMemberRequested;
         _viewModel.OnOpenPreviewRequested += OnOpenPreviewRequested;
+        _viewModel.OnExportCollaborationRequested += OnExportCollaborationRequested;
+        _viewModel.OnImportCollaborationRequested += OnImportCollaborationRequested;
     }
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)
@@ -94,5 +96,37 @@ public partial class MainWindow : Window
     private void MenuExit_Click(object sender, RoutedEventArgs e)
     {
         Application.Current.Shutdown();
+    }
+
+    private async void OnExportCollaborationRequested(object? sender, EventArgs e)
+    {
+        var allMembers = await _viewModel.GetAllMembersAsync();
+        if (allMembers.Count == 0)
+        {
+            MessageBox.Show("没有成员数据", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var dialog = new CollaborationExportDialog(allMembers) { Owner = this };
+        dialog.ShowDialog();
+    }
+
+    private async void OnImportCollaborationRequested(object? sender, EventArgs e)
+    {
+        var context = new ZupuDbContext();
+        var dataService = new DataService(context);
+        var allMembers = await dataService.GetAllMembersAsync();
+        if (allMembers.Count == 0)
+        {
+            MessageBox.Show("请先添加至少一位成员作为导入目标", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var dialog = new CollaborationImportDialog(allMembers, dataService) { Owner = this };
+        if (dialog.ShowDialog() == true)
+        {
+            await _viewModel.LoadDataAsync();
+            _viewModel.StatusText = "协作导入完成";
+        }
     }
 }

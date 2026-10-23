@@ -34,6 +34,8 @@ public partial class LayoutSettings : ObservableObject
     [ObservableProperty] private bool _showPhoto = true;
     [ObservableProperty] private bool _showSpouse = true;
     [ObservableProperty] private bool _showBiography;
+    [ObservableProperty] private bool _showNodeBorder = true;
+    [ObservableProperty] private bool _verticalText;
     [ObservableProperty] private string _title = "族谱";
     [ObservableProperty] private double _titleFontSize = 28;
 

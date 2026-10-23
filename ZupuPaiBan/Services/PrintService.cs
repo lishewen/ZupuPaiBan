@@ -57,14 +57,13 @@ public class PrintService
         }
     }
 
-    public List<FixedPage> CreatePrintPages(LayoutResult layoutResult, LayoutSettings settings)
+    public List<FixedPage> CreatePrintPages(LayoutResult layoutResult, LayoutSettings settings, Dictionary<int, (double dx, double dy)>? positionOffsets = null)
     {
         var pages = new List<FixedPage>();
 
         if (layoutResult.Pages.Count == 0)
         {
-            // 没有分页数据，创建单页
-            pages.Add(CreateSinglePage(layoutResult.Nodes, layoutResult.Lines, settings, 1, 1, 1));
+            pages.Add(CreateSinglePage(layoutResult.Nodes, layoutResult.Lines, settings, 1, 1, 1, positionOffsets));
             return pages;
         }
 
@@ -76,7 +75,8 @@ public class PrintService
                 settings,
                 pageLayout.PageNumber,
                 layoutResult.TotalPages,
-                pageLayout.StartGeneration);
+                pageLayout.StartGeneration,
+                positionOffsets);
             pages.Add(page);
         }
 
@@ -89,7 +89,8 @@ public class PrintService
         LayoutSettings settings,
         int pageNumber,
         int totalPages,
-        int startGeneration)
+        int startGeneration,
+        Dictionary<int, (double dx, double dy)>? positionOffsets)
     {
         var page = new FixedPage
         {
@@ -192,9 +193,16 @@ public class PrintService
         // 绘制节点卡片
         foreach (var node in nodes)
         {
+            double nodeX = node.X;
+            double nodeY = node.Y;
+            if (positionOffsets != null && positionOffsets.TryGetValue(node.Member.Id, out var offset))
+            {
+                nodeX += offset.dx;
+                nodeY += offset.dy;
+            }
             var card = CreateNodeCard(node, settings);
-            Canvas.SetLeft(card, node.X);
-            Canvas.SetTop(card, node.Y);
+            Canvas.SetLeft(card, nodeX);
+            Canvas.SetTop(card, nodeY);
             contentCanvas.Children.Add(card);
         }
 
@@ -223,29 +231,52 @@ public class PrintService
         {
             Width = node.Width,
             Height = node.Height,
-            BorderBrush = new SolidColorBrush(Color.FromRgb(120, 80, 40)),
-            BorderThickness = new Thickness(1.2),
             CornerRadius = new CornerRadius(4),
             Background = node.Member.Gender == Gender.Male
                 ? new SolidColorBrush(Color.FromRgb(245, 245, 250))
                 : new SolidColorBrush(Color.FromRgb(255, 240, 245))
         };
 
+        if (settings.ShowNodeBorder)
+        {
+            border.BorderBrush = new SolidColorBrush(Color.FromRgb(120, 80, 40));
+            border.BorderThickness = new Thickness(1.2);
+        }
+
         var grid = new Grid();
         grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) });
         grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
-        var nameBlock = new TextBlock
+        if (settings.VerticalText)
         {
-            Text = node.Member.Name,
-            FontSize = settings.FontSize + 2,
-            FontWeight = FontWeights.Bold,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            Foreground = new SolidColorBrush(Color.FromRgb(50, 30, 10)),
-            Margin = new Thickness(2, 2, 2, 0)
-        };
-        Grid.SetRow(nameBlock, 0);
-        grid.Children.Add(nameBlock);
+            // 竖排文字：每字一行
+            var nameBlock = new TextBlock
+            {
+                Text = string.Join("\n", node.Member.Name.ToCharArray()),
+                FontSize = settings.FontSize + 2,
+                FontWeight = FontWeights.Bold,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                TextAlignment = TextAlignment.Center,
+                Foreground = new SolidColorBrush(Color.FromRgb(50, 30, 10)),
+                Margin = new Thickness(2, 2, 2, 0)
+            };
+            Grid.SetRow(nameBlock, 0);
+            grid.Children.Add(nameBlock);
+        }
+        else
+        {
+            var nameBlock = new TextBlock
+            {
+                Text = node.Member.Name,
+                FontSize = settings.FontSize + 2,
+                FontWeight = FontWeights.Bold,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Foreground = new SolidColorBrush(Color.FromRgb(50, 30, 10)),
+                Margin = new Thickness(2, 2, 2, 0)
+            };
+            Grid.SetRow(nameBlock, 0);
+            grid.Children.Add(nameBlock);
+        }
 
         var infoStack = new StackPanel
         {
