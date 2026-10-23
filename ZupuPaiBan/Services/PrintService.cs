@@ -105,6 +105,16 @@ public class PrintService
             ClipToBounds = true
         };
 
+        // 将选中字体作为继承属性应用到整页（标题、节点、页脚均生效）
+        try
+        {
+            TextElement.SetFontFamily(canvas, new FontFamily(settings.FontFamily));
+        }
+        catch
+        {
+            TextElement.SetFontFamily(canvas, new FontFamily("宋体"));
+        }
+
         // 绘制标题
         var titleBlock = new TextBlock
         {

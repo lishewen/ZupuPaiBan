@@ -31,6 +31,7 @@ public partial class LayoutSettings : ObservableObject
     [ObservableProperty] private double _horizontalSpacing = 30;
     [ObservableProperty] private double _verticalSpacing = 80;
     [ObservableProperty] private double _fontSize = 12;
+    [ObservableProperty] private string _fontFamily = "宋体";
     [ObservableProperty] private bool _showPhoto = true;
     [ObservableProperty] private bool _showSpouse = true;
     [ObservableProperty] private bool _showBiography;

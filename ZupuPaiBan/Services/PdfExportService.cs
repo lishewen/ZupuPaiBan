@@ -59,7 +59,7 @@ public class PdfExportService
                 using var gfx = XGraphics.FromPdfPage(page);
                 
                 // 绘制标题
-                var titleFont = new XFont("SimSun", settings.TitleFontSize, XFontStyle.Bold);
+                var titleFont = MakeFont(settings, settings.TitleFontSize, XFontStyle.Bold);
                 var titleSize = gfx.MeasureString(settings.Title, titleFont);
                 gfx.DrawString(
                     settings.Title,
@@ -117,7 +117,7 @@ public class PdfExportService
                 gfx.Restore();
 
                 // 绘制页脚
-                var footerFont = new XFont("SimSun", 8);
+                var footerFont = MakeFont(settings, 8);
                 var footerText = $"第 {pageLayout.StartGeneration} 代 - 第 {pageLayout.PageNumber}/{pages.Count} 页";
                 var footerSize = gfx.MeasureString(footerText, footerFont);
                 gfx.DrawString(
@@ -155,7 +155,7 @@ public class PdfExportService
         gfx.DrawRoundedRectangle(borderPen, x, y, width, height, 1, 1);
 
         // 姓名
-        var nameFont = new XFont("SimSun", settings.FontSize + 1, XFontStyle.Bold);
+        var nameFont = MakeFont(settings, settings.FontSize + 1, XFontStyle.Bold);
         var nameSize = gfx.MeasureString(node.Member.Name, nameFont);
         gfx.DrawString(
             node.Member.Name,
@@ -172,7 +172,7 @@ public class PdfExportService
         }
         if (!string.IsNullOrEmpty(lifeText))
         {
-            var lifeFont = new XFont("SimSun", settings.FontSize - 1);
+            var lifeFont = MakeFont(settings, settings.FontSize - 1);
             var lifeSize = gfx.MeasureString(lifeText, lifeFont);
             gfx.DrawString(
                 lifeText,
@@ -181,5 +181,30 @@ public class PdfExportService
                 new XPoint(x + (width - lifeSize.Width) / 2, y + 3 + nameSize.Height + lifeSize.Height + 1),
                 XStringFormats.Default);
         }
+    }
+
+    /// <summary>根据设置创建 PDF 字体（中文名称映射 + 回退）</summary>
+    private static XFont MakeFont(LayoutSettings settings, double size, XFontStyle style = XFontStyle.Regular)
+    {
+        string fam = ResolvePdfFont(settings.FontFamily);
+        try { return new XFont(fam, size, style); }
+        catch { return new XFont("SimSun", size, style); }
+    }
+
+    private static string ResolvePdfFont(string? name)
+    {
+        name = (name ?? "").Trim();
+        return name switch
+        {
+            "" => "SimSun",
+            "宋体" => "SimSun",
+            "黑体" => "SimHei",
+            "微软雅黑" => "Microsoft YaHei",
+            "楷体" => "KaiTi",
+            "仿宋" => "FangSong",
+            "隶书" => "LiSu",
+            "幼圆" => "YouYuan",
+            _ => name
+        };
     }
 }

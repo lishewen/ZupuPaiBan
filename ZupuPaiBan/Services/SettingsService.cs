@@ -31,6 +31,7 @@ public class SettingsService
         public double HorizontalSpacing { get; set; } = 30;
         public double VerticalSpacing { get; set; } = 80;
         public double FontSize { get; set; } = 12;
+        public string FontFamily { get; set; } = "宋体";
         public bool ShowPhoto { get; set; } = true;
         public bool ShowSpouse { get; set; } = true;
         public bool ShowBiography { get; set; }
@@ -58,6 +59,7 @@ public class SettingsService
             settings.HorizontalSpacing = snap.HorizontalSpacing;
             settings.VerticalSpacing = snap.VerticalSpacing;
             settings.FontSize = snap.FontSize;
+            settings.FontFamily = snap.FontFamily;
             settings.ShowPhoto = snap.ShowPhoto;
             settings.ShowSpouse = snap.ShowSpouse;
             settings.ShowBiography = snap.ShowBiography;
@@ -87,6 +89,7 @@ public class SettingsService
                 HorizontalSpacing = settings.HorizontalSpacing,
                 VerticalSpacing = settings.VerticalSpacing,
                 FontSize = settings.FontSize,
+                FontFamily = settings.FontFamily,
                 ShowPhoto = settings.ShowPhoto,
                 ShowSpouse = settings.ShowSpouse,
                 ShowBiography = settings.ShowBiography,

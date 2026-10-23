@@ -36,6 +36,16 @@ public partial class PrintPreviewWindow : Window
         public bool IsSpouse;
     }
 
+    /// <summary>当前选中的字体（无效时回退默认）</summary>
+    private FontFamily CurrentFontFamily
+    {
+        get
+        {
+            try { return new FontFamily(_viewModel.Settings.FontFamily); }
+            catch { return new FontFamily("宋体"); }
+        }
+    }
+
     public PrintPreviewWindow(DataService dataService, PrintService printService)
     {
         InitializeComponent();
@@ -48,6 +58,14 @@ public partial class PrintPreviewWindow : Window
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
+        // 填充系统已安装字体列表
+        if (cmbFontFamily.ItemsSource == null)
+        {
+            cmbFontFamily.ItemsSource = Fonts.SystemFontFamilies
+                .Select(f => f.Source)
+                .OrderBy(n => n)
+                .ToList();
+        }
         await _viewModel.InitializeAsync();
         RenderInteractiveCanvas();
     }
@@ -100,6 +118,7 @@ public partial class PrintPreviewWindow : Window
         {
             Text = _viewModel.Settings.Title,
             FontSize = _viewModel.Settings.TitleFontSize,
+            FontFamily = CurrentFontFamily,
             FontWeight = FontWeights.Bold,
             Foreground = new SolidColorBrush(Color.FromRgb(80, 40, 10))
         };
@@ -208,6 +227,7 @@ public partial class PrintPreviewWindow : Window
             {
                 Text = displayName,
                 FontSize = Math.Max(8, (_viewModel.Settings.FontSize + 2) * _scale),
+                FontFamily = CurrentFontFamily,
                 FontWeight = FontWeights.Bold,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 TextAlignment = TextAlignment.Center,
@@ -223,6 +243,7 @@ public partial class PrintPreviewWindow : Window
                 {
                     Text = lifeText,
                     FontSize = Math.Max(6, (_viewModel.Settings.FontSize - 1) * _scale),
+                    FontFamily = CurrentFontFamily,
                     Foreground = new SolidColorBrush(Colors.DimGray),
                     HorizontalAlignment = HorizontalAlignment.Center
                 });
@@ -277,6 +298,7 @@ public partial class PrintPreviewWindow : Window
                 {
                     Text = spouse.Member.Name,
                     FontSize = Math.Max(8, _viewModel.Settings.FontSize * _scale),
+                    FontFamily = CurrentFontFamily,
                     HorizontalAlignment = HorizontalAlignment.Center,
                     VerticalAlignment = VerticalAlignment.Center,
                     Foreground = new SolidColorBrush(Color.FromRgb(100, 50, 50))
