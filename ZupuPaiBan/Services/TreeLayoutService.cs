@@ -32,6 +32,8 @@ public class ConnectionLine
     public double ChildX { get; set; }
     public double ChildY { get; set; }
     public bool IsSpouseLine { get; set; }
+    public int ParentMemberId { get; set; }
+    public int ChildMemberId { get; set; }
 }
 
 public class PageLayout
@@ -521,7 +523,9 @@ public class TreeLayoutService
                 ParentY = node.Y + node.Height / 2,
                 ChildX = node.SpouseNode.X,
                 ChildY = node.SpouseNode.Y + node.SpouseNode.Height / 2,
-                IsSpouseLine = true
+                IsSpouseLine = true,
+                ParentMemberId = node.Member.Id,
+                ChildMemberId = node.SpouseNode.Member.Id
             });
         }
 
@@ -533,7 +537,9 @@ public class TreeLayoutService
                 ParentY = node.Y + node.Height,
                 ChildX = child.PairCenterX,
                 ChildY = child.Y,
-                IsSpouseLine = false
+                IsSpouseLine = false,
+                ParentMemberId = node.Member.Id,
+                ChildMemberId = child.Member.Id
             });
             CollectNodes(child, result);
         }

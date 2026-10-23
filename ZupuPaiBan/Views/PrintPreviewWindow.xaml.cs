@@ -17,10 +17,24 @@ public partial class PrintPreviewWindow : Window
 
     // Drag state
     private bool _isDragging;
-    private Border? _draggedElement;
+    private UIElement? _draggedElement;
     private int _draggedMemberId;
     private Point _dragStart;
     private double _dragStartLeft, _dragStartTop;
+
+    // Node + line tracking for live connection updates
+    private readonly Dictionary<int, (double left, double top, double w, double h)> _nodeRects = new();
+    private readonly Dictionary<int, UIElement> _nodeElements = new();
+    private readonly List<LineRecord> _lineRecords = new();
+    private double _scale = 1.0, _offsetX = 0, _offsetY = 60;
+
+    private class LineRecord
+    {
+        public FrameworkElement Element = null!;
+        public int ParentId;
+        public int ChildId;
+        public bool IsSpouse;
+    }
 
     public PrintPreviewWindow(DataService dataService, PrintService printService)
     {
@@ -54,6 +68,9 @@ public partial class PrintPreviewWindow : Window
     private void RenderInteractiveCanvas()
     {
         previewCanvas.Children.Clear();
+        _nodeRects.Clear();
+        _nodeElements.Clear();
+        _lineRecords.Clear();
 
         var layout = _viewModel.LastLayoutResult;
         if (layout.Nodes.Count == 0)
@@ -70,14 +87,13 @@ public partial class PrintPreviewWindow : Window
         pageBorder.Width = pageWidth;
         pageBorder.Height = pageHeight;
 
-        // Calculate scale for fitting content
         var nodes = layout.Nodes;
         double contentWidth = nodes.Count > 0 ? nodes.Max(n => n.X + n.Width + (n.SpouseNode?.Width ?? 0) + 20) : 400;
         double contentHeight = nodes.Count > 0 ? nodes.Max(n => n.Y + n.Height) : 400;
-        double scale = Math.Min((pageWidth - 40) / Math.Max(contentWidth, 1), (pageHeight - 100) / Math.Max(contentHeight, 1));
-        scale = Math.Min(scale, 1.0);
-        double offsetX = (pageWidth - contentWidth * scale) / 2;
-        double offsetY = 60;
+        _scale = Math.Min((pageWidth - 40) / Math.Max(contentWidth, 1), (pageHeight - 100) / Math.Max(contentHeight, 1));
+        _scale = Math.Min(_scale, 1.0);
+        _offsetX = (pageWidth - contentWidth * _scale) / 2;
+        _offsetY = 60;
 
         // Draw title
         var titleBlock = new TextBlock
@@ -92,96 +108,81 @@ public partial class PrintPreviewWindow : Window
         Canvas.SetTop(titleBlock, 15);
         previewCanvas.Children.Add(titleBlock);
 
-        // Draw lines
+        // 1st pass: compute node rects (including drag offsets) so lines can reference them
+        foreach (var node in nodes)
+        {
+            if (node.SpouseNode != null) continue; // spouse handled below
+            RegisterNodeRect(node.Member.Id, node.X, node.Y, node.Width, node.Height);
+            if (node.SpouseNode != null)
+            {
+                // spouse moves with main node offset
+                RegisterNodeRect(node.SpouseNode.Member.Id, node.SpouseNode.X, node.SpouseNode.Y,
+                    node.SpouseNode.Width, node.SpouseNode.Height, node.Member.Id);
+            }
+        }
+
+        // 2nd pass: create line elements
         foreach (var line in layout.Lines)
         {
-            double px1 = line.ParentX * scale + offsetX;
-            double py1 = line.ParentY * scale + offsetY;
-            double px2 = line.ChildX * scale + offsetX;
-            double py2 = line.ChildY * scale + offsetY;
-
-            // Apply offsets to lines
-            var parentNode = nodes.FirstOrDefault(n => Math.Abs(n.X + n.Width - line.ParentX) < 5);
-            var childNode = nodes.FirstOrDefault(n => Math.Abs(n.X - line.ChildX) < 5);
-            if (parentNode != null && _viewModel.PositionOffsets.TryGetValue(parentNode.Member.Id, out var pOff))
-            {
-                px1 += pOff.dx * scale;
-                py1 += pOff.dy * scale;
-            }
-            if (childNode != null && _viewModel.PositionOffsets.TryGetValue(childNode.Member.Id, out var cOff))
-            {
-                px2 += cOff.dx * scale;
-                py2 += cOff.dy * scale;
-            }
-
             if (line.IsSpouseLine)
             {
                 var spouseLine = new Line
                 {
-                    X1 = px1, Y1 = py1, X2 = px2, Y2 = py2,
                     Stroke = new SolidColorBrush(Color.FromRgb(180, 50, 50)),
                     StrokeThickness = 1.5,
                     Opacity = 0.6
                 };
                 previewCanvas.Children.Add(spouseLine);
+                _lineRecords.Add(new LineRecord
+                {
+                    Element = spouseLine,
+                    ParentId = line.ParentMemberId,
+                    ChildId = line.ChildMemberId,
+                    IsSpouse = true
+                });
             }
             else
             {
-                double midY = (py1 + py2) / 2;
-                var pathFigure = new PathFigure { StartPoint = new Point(px1, py1) };
-                pathFigure.Segments = new PathSegmentCollection
-                {
-                    new LineSegment(new Point(px1, midY), true),
-                    new LineSegment(new Point(px2, midY), true),
-                    new LineSegment(new Point(px2, py2), true)
-                };
-                var pathGeom = new PathGeometry(new[] { pathFigure });
                 var pathShape = new Path
                 {
-                    Data = pathGeom,
+                    Data = new PathGeometry(new[] { new PathFigure() }),
                     Stroke = new SolidColorBrush(Color.FromRgb(100, 70, 40)),
                     StrokeThickness = 1.2,
                     Opacity = 0.6
                 };
                 previewCanvas.Children.Add(pathShape);
+                _lineRecords.Add(new LineRecord
+                {
+                    Element = pathShape,
+                    ParentId = line.ParentMemberId,
+                    ChildId = line.ChildMemberId,
+                    IsSpouse = false
+                });
             }
         }
 
-        // Draw nodes with checkboxes
+        UpdateAllLines();
+
+        // 3rd pass: create node visuals
         foreach (var node in nodes)
         {
-            if (node.SpouseNode != null) continue; // Skip spouse nodes, rendered as part of main
+            if (node.SpouseNode != null) continue;
 
-            double nx = node.X * scale + offsetX;
-            double ny = node.Y * scale + offsetY;
-            double nw = node.Width * scale;
-            double nh = node.Height * scale;
-
-            // Apply drag offset
-            if (_viewModel.PositionOffsets.TryGetValue(node.Member.Id, out var offset))
-            {
-                nx += offset.dx;
-                ny += offset.dy;
-            }
-
+            if (!_nodeRects.TryGetValue(node.Member.Id, out var rect)) continue;
             bool isExcluded = _viewModel.ExcludedMemberIds.Contains(node.Member.Id);
 
-            // Node container
-            var nodePanel = new Grid
-            {
-                Width = nw,
-                Height = nh
-            };
+            var nodePanel = new Grid { Width = rect.w, Height = rect.h };
 
-            // Border (background + optional border)
             var border = new Border
             {
-                Width = nw,
-                Height = nh,
+                Width = rect.w,
+                Height = rect.h,
                 CornerRadius = new CornerRadius(3),
-                Background = node.Member.Gender == Gender.Male
-                    ? new SolidColorBrush(Color.FromRgb(245, 245, 250))
-                    : new SolidColorBrush(Color.FromRgb(255, 240, 245)),
+                Background = _viewModel.Settings.ShowNodeBorder
+                    ? (node.Member.Gender == Gender.Male
+                        ? new SolidColorBrush(Color.FromRgb(245, 245, 250))
+                        : new SolidColorBrush(Color.FromRgb(255, 240, 245)))
+                    : Brushes.Transparent,
                 Opacity = isExcluded ? 0.3 : 1.0,
                 Cursor = Cursors.Hand,
                 Tag = node.Member.Id
@@ -193,7 +194,6 @@ public partial class PrintPreviewWindow : Window
                 border.BorderThickness = new Thickness(1);
             }
 
-            // Content
             var contentStack = new StackPanel
             {
                 HorizontalAlignment = HorizontalAlignment.Center,
@@ -204,35 +204,32 @@ public partial class PrintPreviewWindow : Window
                 ? string.Join("\n", node.Member.Name.ToCharArray())
                 : node.Member.Name;
 
-            var nameText = new TextBlock
+            contentStack.Children.Add(new TextBlock
             {
                 Text = displayName,
-                FontSize = Math.Max(8, (_viewModel.Settings.FontSize + 2) * scale),
+                FontSize = Math.Max(8, (_viewModel.Settings.FontSize + 2) * _scale),
                 FontWeight = FontWeights.Bold,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 TextAlignment = TextAlignment.Center,
                 Foreground = new SolidColorBrush(Color.FromRgb(50, 30, 10))
-            };
-            contentStack.Children.Add(nameText);
+            });
 
             string lifeText = node.Member.BirthDate;
             if (!string.IsNullOrEmpty(node.Member.DeathDate))
                 lifeText += $" - {node.Member.DeathDate}";
             if (!string.IsNullOrEmpty(lifeText))
             {
-                var lifeTextBlock = new TextBlock
+                contentStack.Children.Add(new TextBlock
                 {
                     Text = lifeText,
-                    FontSize = Math.Max(6, (_viewModel.Settings.FontSize - 1) * scale),
+                    FontSize = Math.Max(6, (_viewModel.Settings.FontSize - 1) * _scale),
                     Foreground = new SolidColorBrush(Colors.DimGray),
                     HorizontalAlignment = HorizontalAlignment.Center
-                };
-                contentStack.Children.Add(lifeTextBlock);
+                });
             }
 
             border.Child = contentStack;
 
-            // Checkbox overlay (top-left corner)
             var chk = new CheckBox
             {
                 IsChecked = !isExcluded,
@@ -249,32 +246,26 @@ public partial class PrintPreviewWindow : Window
             nodePanel.Children.Add(border);
             nodePanel.Children.Add(chk);
 
-            Canvas.SetLeft(nodePanel, nx);
-            Canvas.SetTop(nodePanel, ny);
+            Canvas.SetLeft(nodePanel, rect.left);
+            Canvas.SetTop(nodePanel, rect.top);
             previewCanvas.Children.Add(nodePanel);
+            _nodeElements[node.Member.Id] = nodePanel;
 
-            // Also render spouse if exists
-            if (node.SpouseNode != null)
+            // Spouse visual
+            if (node.SpouseNode != null && _nodeRects.TryGetValue(node.SpouseNode.Member.Id, out var srect))
             {
                 var spouse = node.SpouseNode;
-                double sx = spouse.X * scale + offsetX;
-                double sy = spouse.Y * scale + offsetY;
-                double sw = spouse.Width * scale;
-                double sh = spouse.Height * scale;
-
-                if (_viewModel.PositionOffsets.TryGetValue(node.Member.Id, out var soffset))
-                {
-                    sx += soffset.dx;
-                    sy += soffset.dy;
-                }
-
                 var spouseBorder = new Border
                 {
-                    Width = sw,
-                    Height = sh,
+                    Width = srect.w,
+                    Height = srect.h,
                     CornerRadius = new CornerRadius(3),
-                    Background = new SolidColorBrush(Color.FromRgb(255, 240, 245)),
-                    Opacity = isExcluded ? 0.3 : 1.0
+                    Background = _viewModel.Settings.ShowNodeBorder
+                        ? new SolidColorBrush(Color.FromRgb(255, 240, 245))
+                        : Brushes.Transparent,
+                    Opacity = isExcluded ? 0.3 : 1.0,
+                    Cursor = Cursors.Hand,
+                    Tag = node.Member.Id // spouse drags with main node
                 };
                 if (_viewModel.Settings.ShowNodeBorder)
                 {
@@ -282,39 +273,140 @@ public partial class PrintPreviewWindow : Window
                     spouseBorder.BorderThickness = new Thickness(0.8);
                 }
 
-                var spouseText = new TextBlock
+                spouseBorder.Child = new TextBlock
                 {
                     Text = spouse.Member.Name,
-                    FontSize = Math.Max(8, _viewModel.Settings.FontSize * scale),
+                    FontSize = Math.Max(8, _viewModel.Settings.FontSize * _scale),
                     HorizontalAlignment = HorizontalAlignment.Center,
                     VerticalAlignment = VerticalAlignment.Center,
                     Foreground = new SolidColorBrush(Color.FromRgb(100, 50, 50))
                 };
-                spouseBorder.Child = spouseText;
 
-                Canvas.SetLeft(spouseBorder, sx);
-                Canvas.SetTop(spouseBorder, sy);
+                Canvas.SetLeft(spouseBorder, srect.left);
+                Canvas.SetTop(spouseBorder, srect.top);
                 previewCanvas.Children.Add(spouseBorder);
+                _nodeElements[spouse.Member.Id] = spouseBorder;
             }
         }
+    }
+
+    private void RegisterNodeRect(int memberId, double x, double y, double w, double h, int? offsetSourceId = null)
+    {
+        double nx = x * _scale + _offsetX;
+        double ny = y * _scale + _offsetY;
+        int offsetKey = offsetSourceId ?? memberId;
+        if (_viewModel.PositionOffsets.TryGetValue(offsetKey, out var offset))
+        {
+            nx += offset.dx;
+            ny += offset.dy;
+        }
+        _nodeRects[memberId] = (nx, ny, w * _scale, h * _scale);
+    }
+
+    /// <summary>
+    /// 根据当前节点位置重新计算所有连接线
+    /// </summary>
+    private void UpdateAllLines()
+    {
+        foreach (var rec in _lineRecords)
+        {
+            if (!_nodeRects.TryGetValue(rec.ParentId, out var pr) || !_nodeRects.TryGetValue(rec.ChildId, out var cr))
+                continue;
+
+            if (rec.IsSpouse)
+            {
+                if (rec.Element is Line ln)
+                {
+                    var (sx1, sy1, sx2, sy2) = EdgeAnchors(pr, cr);
+                    ln.X1 = sx1; ln.Y1 = sy1; ln.X2 = sx2; ln.Y2 = sy2;
+                }
+            }
+            else
+            {
+                if (rec.Element is Path path)
+                {
+                    // parent bottom-center -> child top-center (elbow)
+                    double px = pr.left + pr.w / 2;
+                    double py = pr.top + pr.h;
+                    double cx = cr.left + cr.w / 2;
+                    double cy = cr.top;
+                    double midY = (py + cy) / 2;
+
+                    var figure = new PathFigure { StartPoint = new Point(px, py) };
+                    figure.Segments = new PathSegmentCollection
+                    {
+                        new LineSegment(new Point(px, midY), true),
+                        new LineSegment(new Point(cx, midY), true),
+                        new LineSegment(new Point(cx, cy), true)
+                    };
+                    path.Data = new PathGeometry(new[] { figure });
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// 计算两个矩形相对边缘的连接锚点（用于配偶线）
+    /// </summary>
+    private static (double, double, double, double) EdgeAnchors(
+        (double left, double top, double w, double h) a,
+        (double left, double top, double w, double h) b)
+    {
+        double acx = a.left + a.w / 2, acy = a.top + a.h / 2;
+        double bcx = b.left + b.w / 2, bcy = b.top + b.h / 2;
+
+        double ax, ay, bx, by;
+        if (Math.Abs(a.left + a.w - b.left) < 1 || Math.Abs(b.left + b.w - a.left) < 1)
+        {
+            // horizontal neighbors: connect facing edges
+            if (a.left < b.left)
+            {
+                ax = a.left + a.w; bx = b.left;
+            }
+            else
+            {
+                ax = a.left; bx = b.left + b.w;
+            }
+            ay = acy; by = bcy;
+        }
+        else
+        {
+            ax = acx; ay = acy; bx = bcx; by = bcy;
+        }
+        return (ax, ay, bx, by);
     }
 
     // Drag handlers
     private void PreviewCanvas_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         var element = FindNodeBorder(e.OriginalSource as DependencyObject);
-        if (element?.Tag is int memberId)
+        if (element?.Tag is int memberId && _nodeElements.TryGetValue(memberId, out var topEl))
         {
             _isDragging = true;
-            _draggedElement = element;
+            _draggedElement = topEl;
             _draggedMemberId = memberId;
             _dragStart = e.GetPosition(previewCanvas);
-            _dragStartLeft = Canvas.GetLeft(element.Parent is Grid g ? g : element);
-            _dragStartTop = Canvas.GetTop(element.Parent is Grid g2 ? g2 : element);
-            element.CaptureMouse();
+            _dragStartLeft = Canvas.GetLeft(topEl);
+            _dragStartTop = Canvas.GetTop(topEl);
+
+            // 记录配偶节点初始位置（随主节点一起移动）
+            _spouseEl = null;
+            var node = _viewModel.LastLayoutResult.Nodes
+                .FirstOrDefault(n => n.Member.Id == memberId && n.SpouseNode != null);
+            if (node?.SpouseNode != null && _nodeElements.TryGetValue(node.SpouseNode.Member.Id, out var sel)
+                && sel != topEl)
+            {
+                _spouseEl = sel;
+                _spouseStartLeft = Canvas.GetLeft(sel);
+                _spouseStartTop = Canvas.GetTop(sel);
+            }
+
             previewCanvas.CaptureMouse();
         }
     }
+
+    private UIElement? _spouseEl;
+    private double _spouseStartLeft, _spouseStartTop;
 
     private void PreviewCanvas_MouseMove(object sender, MouseEventArgs e)
     {
@@ -324,48 +416,47 @@ public partial class PrintPreviewWindow : Window
         double dx = current.X - _dragStart.X;
         double dy = current.Y - _dragStart.Y;
 
-        var parentEl = _draggedElement.Parent is Grid g ? (UIElement)g : _draggedElement;
-        Canvas.SetLeft(parentEl, _dragStartLeft + dx);
-        Canvas.SetTop(parentEl, _dragStartTop + dy);
+        double newLeft = _dragStartLeft + dx;
+        double newTop = _dragStartTop + dy;
+        Canvas.SetLeft(_draggedElement, newLeft);
+        Canvas.SetTop(_draggedElement, newTop);
+
+        if (_nodeRects.TryGetValue(_draggedMemberId, out var r))
+            _nodeRects[_draggedMemberId] = (newLeft, newTop, r.w, r.h);
+
+        // 配偶同步移动
+        if (_spouseEl != null)
+        {
+            double sLeft = _spouseStartLeft + dx;
+            double sTop = _spouseStartTop + dy;
+            Canvas.SetLeft(_spouseEl, sLeft);
+            Canvas.SetTop(_spouseEl, sTop);
+            // 找到配偶 memberId
+            var spouseKvp = _nodeElements.FirstOrDefault(kvp => kvp.Value == _spouseEl);
+            if (spouseKvp.Key != 0 && _nodeRects.TryGetValue(spouseKvp.Key, out var sr))
+                _nodeRects[spouseKvp.Key] = (sLeft, sTop, sr.w, sr.h);
+        }
+
+        UpdateAllLines();
     }
 
     private void PreviewCanvas_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
         if (!_isDragging || _draggedElement == null) { _isDragging = false; return; }
 
-        var parentEl = _draggedElement.Parent is Grid g ? (UIElement)g : _draggedElement;
-        double currentLeft = Canvas.GetLeft(parentEl);
-        double currentTop = Canvas.GetTop(parentEl);
-
-        // Calculate new offset relative to original position
         var node = _viewModel.LastLayoutResult.Nodes.FirstOrDefault(n => n.Member.Id == _draggedMemberId);
-        if (node != null)
+        if (node != null && _scale > 0)
         {
-            double pageWidth = _viewModel.Settings.PageWidth;
-            double pageHeight = _viewModel.Settings.PageHeight;
-            double contentWidth = _viewModel.LastLayoutResult.Nodes.Max(n2 => n2.X + n2.Width + (n2.SpouseNode?.Width ?? 0) + 20);
-            double contentHeight = _viewModel.LastLayoutResult.Nodes.Max(n2 => n2.Y + n2.Height);
-            double scale = Math.Min((pageWidth - 40) / Math.Max(contentWidth, 1), (pageHeight - 100) / Math.Max(contentHeight, 1));
-            scale = Math.Min(scale, 1.0);
-            double offsetX = (pageWidth - contentWidth * scale) / 2;
-            double offsetY = 60;
-
-            double origX = node.X * scale + offsetX;
-            double origY = node.Y * scale + offsetY;
-
-            double ddx = currentLeft - origX;
-            double ddy = currentTop - origY;
-
-            // Store in raw (unscaled) coordinates
-            if (scale > 0)
-            {
-                _viewModel.UpdatePositionOffset(_draggedMemberId, ddx / scale, ddy / scale);
-            }
+            double origX = node.X * _scale + _offsetX;
+            double origY = node.Y * _scale + _offsetY;
+            double currentLeft = Canvas.GetLeft(_draggedElement);
+            double currentTop = Canvas.GetTop(_draggedElement);
+            _viewModel.UpdatePositionOffset(_draggedMemberId, (currentLeft - origX) / _scale, (currentTop - origY) / _scale);
         }
 
         _isDragging = false;
-        _draggedElement?.ReleaseMouseCapture();
         _draggedElement = null;
+        _spouseEl = null;
         previewCanvas.ReleaseMouseCapture();
     }
 
@@ -374,7 +465,7 @@ public partial class PrintPreviewWindow : Window
         while (source != null)
         {
             if (source is Border b && b.Tag is int) return b;
-            if (source is CheckBox) return null; // Don't drag if clicking checkbox
+            if (source is CheckBox) return null;
             source = VisualTreeHelper.GetParent(source);
         }
         return null;
@@ -385,31 +476,60 @@ public partial class PrintPreviewWindow : Window
         if (sender is CheckBox chk && chk.Tag is int memberId)
         {
             if (chk.IsChecked == true)
+            {
                 _viewModel.ExcludedMemberIds.Remove(memberId);
+                foreach (var id in GetDescendantIds(memberId))
+                    _viewModel.ExcludedMemberIds.Remove(id);
+            }
             else
+            {
                 _viewModel.ExcludedMemberIds.Add(memberId);
+                foreach (var id in GetDescendantIds(memberId))
+                    _viewModel.ExcludedMemberIds.Add(id);
+            }
 
             _viewModel.RefreshPreviewCommand.Execute(null);
         }
     }
 
+    private IEnumerable<int> GetDescendantIds(int parentId)
+    {
+        var result = new List<int>();
+        var allMembers = _viewModel.AllMembers;
+        var queue = new Queue<int>();
+        queue.Enqueue(parentId);
+
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            foreach (var child in allMembers.Where(m => m.FatherId == current))
+            {
+                result.Add(child.Id);
+                queue.Enqueue(child.Id);
+            }
+        }
+        return result;
+    }
+
     private void BtnPrintRange_Click(object sender, RoutedEventArgs e)
     {
-        var allMembers = _viewModel.AllMembers;
-        if (allMembers.Count == 0) return;
-
-        var dialog = new PrintRangeDialog(allMembers) { Owner = this };
-        if (dialog.ShowDialog() == true)
+        try
         {
-            if (dialog.ShowAllMembers)
+            var allMembers = _viewModel.AllMembers;
+            if (allMembers == null || allMembers.Count == 0) return;
+
+            var dialog = new PrintRangeDialog(allMembers) { Owner = this };
+            if (dialog.ShowDialog() == true)
             {
-                _viewModel.SetPrintRange(null, 20);
+                if (dialog.ShowAllMembers)
+                    _viewModel.SetPrintRange(null, 20);
+                else
+                    _viewModel.SetPrintRange(dialog.SelectedRootMemberId, dialog.SelectedGenerations);
             }
-            else
-            {
-                _viewModel.SetPrintRange(dialog.SelectedRootMemberId, dialog.SelectedGenerations);
-            }
-            RenderInteractiveCanvas();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"打开打印范围对话框失败: {ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 

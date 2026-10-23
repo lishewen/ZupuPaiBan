@@ -17,6 +17,7 @@ public partial class PreviewViewModel : ObservableObject
 {
     private readonly DataService _dataService;
     private readonly PrintService _printService;
+    private readonly SettingsService _settingsService = new();
     private List<FixedPage> _pages = new();
     private LayoutResult _lastLayoutResult = new();
     private List<FamilyMember> _allMembers = new();
@@ -48,7 +49,14 @@ public partial class PreviewViewModel : ObservableObject
         _dataService = dataService;
         _printService = printService;
 
-        Settings.PropertyChanged += (s, e) => RefreshPreview();
+        // 加载上次的排版设置
+        Settings = _settingsService.Load();
+
+        Settings.PropertyChanged += (s, e) =>
+        {
+            _settingsService.Save(Settings);
+            RefreshPreview();
+        };
     }
 
     public async Task InitializeAsync()

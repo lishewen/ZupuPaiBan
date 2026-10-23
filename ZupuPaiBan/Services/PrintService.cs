@@ -137,17 +137,24 @@ public class PrintService
         transformGroup.Children.Add(new TranslateTransform(offsetX / scale, offsetY / scale));
         contentCanvas.RenderTransform = transformGroup;
 
-        // 绘制连线
+        // 绘制连线（应用节点拖动偏移）
         foreach (var line in lines)
         {
+            double px = line.ParentX, py = line.ParentY, cx = line.ChildX, cy = line.ChildY;
+            if (positionOffsets != null)
+            {
+                if (positionOffsets.TryGetValue(line.ParentMemberId, out var po)) { px += po.dx; py += po.dy; }
+                if (positionOffsets.TryGetValue(line.ChildMemberId, out var co)) { cx += co.dx; cy += co.dy; }
+            }
+
             if (line.IsSpouseLine)
             {
                 var lineShape = new Line
                 {
-                    X1 = line.ParentX,
-                    Y1 = line.ParentY - 2,
-                    X2 = line.ChildX,
-                    Y2 = line.ChildY - 2,
+                    X1 = px,
+                    Y1 = py - 2,
+                    X2 = cx,
+                    Y2 = cy - 2,
                     Stroke = new SolidColorBrush(Color.FromRgb(180, 50, 50)),
                     StrokeThickness = 1.5
                 };
@@ -155,10 +162,10 @@ public class PrintService
 
                 var lineShape2 = new Line
                 {
-                    X1 = line.ParentX,
-                    Y1 = line.ParentY + 2,
-                    X2 = line.ChildX,
-                    Y2 = line.ChildY + 2,
+                    X1 = px,
+                    Y1 = py + 2,
+                    X2 = cx,
+                    Y2 = cy + 2,
                     Stroke = new SolidColorBrush(Color.FromRgb(180, 50, 50)),
                     StrokeThickness = 1.5
                 };
@@ -167,16 +174,16 @@ public class PrintService
             else
             {
                 var pathFigure = new PathFigure();
-                double midY = (line.ParentY + line.ChildY) / 2;
+                double midY = (py + cy) / 2;
 
                 var segments = new PathSegmentCollection
                 {
-                    new LineSegment(new Point(line.ParentX, midY), true),
-                    new LineSegment(new Point(line.ChildX, midY), true),
-                    new LineSegment(new Point(line.ChildX, line.ChildY), true)
+                    new LineSegment(new Point(px, midY), true),
+                    new LineSegment(new Point(cx, midY), true),
+                    new LineSegment(new Point(cx, cy), true)
                 };
 
-                pathFigure.StartPoint = new Point(line.ParentX, line.ParentY);
+                pathFigure.StartPoint = new Point(px, py);
                 pathFigure.Segments = segments;
 
                 var pathGeometry = new PathGeometry(new[] { pathFigure });
@@ -232,9 +239,11 @@ public class PrintService
             Width = node.Width,
             Height = node.Height,
             CornerRadius = new CornerRadius(4),
-            Background = node.Member.Gender == Gender.Male
-                ? new SolidColorBrush(Color.FromRgb(245, 245, 250))
-                : new SolidColorBrush(Color.FromRgb(255, 240, 245))
+            Background = settings.ShowNodeBorder
+                ? (node.Member.Gender == Gender.Male
+                    ? new SolidColorBrush(Color.FromRgb(245, 245, 250))
+                    : new SolidColorBrush(Color.FromRgb(255, 240, 245)))
+                : Brushes.Transparent
         };
 
         if (settings.ShowNodeBorder)

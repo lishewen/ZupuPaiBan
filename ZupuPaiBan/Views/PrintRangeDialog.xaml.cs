@@ -1,6 +1,5 @@
 using System.Windows;
 using System.Windows.Controls;
-using ZupuPaiBan.Data;
 using ZupuPaiBan.Models;
 
 namespace ZupuPaiBan.Views;
@@ -12,12 +11,14 @@ public partial class PrintRangeDialog : Window
     public bool ShowAllMembers { get; private set; } = true;
 
     private readonly List<FamilyMember> _allMembers;
+    private bool _isLoading = true;
 
     public PrintRangeDialog(List<FamilyMember> allMembers)
     {
         InitializeComponent();
         _allMembers = allMembers;
         BuildTree();
+        _isLoading = false;
     }
 
     private void BuildTree()
@@ -42,7 +43,6 @@ public partial class PrintRangeDialog : Window
             }
         }
 
-        // Expand all
         foreach (var item in treeMembers.Items)
         {
             if (item is TreeViewItem tvi) tvi.IsExpanded = true;
@@ -51,6 +51,7 @@ public partial class PrintRangeDialog : Window
 
     private void TreeMembers_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
     {
+        if (_isLoading) return;
         if (e.NewValue is TreeViewItem item && item.Tag is int memberId)
         {
             SelectedRootMemberId = memberId;
@@ -61,7 +62,8 @@ public partial class PrintRangeDialog : Window
     private void SliderGenerations_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         SelectedGenerations = (int)e.NewValue;
-        txtGenCount.Text = $"{SelectedGenerations} 代";
+        if (txtGenCount != null)
+            txtGenCount.Text = $"{SelectedGenerations} 代";
     }
 
     private void BtnAllMembers_Click(object sender, RoutedEventArgs e)
@@ -69,7 +71,6 @@ public partial class PrintRangeDialog : Window
         ShowAllMembers = true;
         SelectedRootMemberId = null;
         DialogResult = true;
-        Close();
     }
 
     private void BtnConfirm_Click(object sender, RoutedEventArgs e)
@@ -81,12 +82,10 @@ public partial class PrintRangeDialog : Window
         }
         ShowAllMembers = false;
         DialogResult = true;
-        Close();
     }
 
     private void BtnCancel_Click(object sender, RoutedEventArgs e)
     {
         DialogResult = false;
-        Close();
     }
 }
