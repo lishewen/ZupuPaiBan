@@ -1,5 +1,7 @@
 # ZupuPaiBan 族谱排版软件
 
+[![build](https://github.com/lishewen/ZupuPaiBan/actions/workflows/build.yml/badge.svg)](https://github.com/lishewen/ZupuPaiBan/actions/workflows/build.yml)
+
 一款离线优先的 Windows 桌面族谱排版工具：录入家族成员信息，自动生成可打印的世系树图，支持 A2/A3/A4 多页打印、PDF 导出，以及 Excel / GEDCOM 数据导入导出与多人协作分工。
 
 ## 功能特性
